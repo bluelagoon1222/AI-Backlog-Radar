@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 백로그 레이더 — 미국 AI 밸류체인 수주잔고</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230B2D5B'/><rect x='22' y='58' width='14' height='22' fill='%23F37321'/><rect x='43' y='42' width='14' height='38' fill='%23F37321'/><rect x='64' y='22' width='14' height='58' fill='%23F37321'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<style>
+:root{
+  --orange:#F37321; --orange-soft:#FDE6D5; --navy:#0B2D5B; --navy-soft:#DCE5F2;
+  --ink:#1B2230; --sub:#5B6475; --line:#E3E6EB; --band:#F4F6F9; --bg:#FFFFFF;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Nanum Gothic","Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-size:17px;line-height:1.6}
+a{color:var(--navy)}
+:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+
+/* header */
+header{background:var(--navy);color:#fff;padding:30px 0 26px;border-bottom:4px solid var(--orange)}
+header h1{margin:0;font-size:32px;font-weight:800;letter-spacing:-.5px}
+header p{margin:6px 0 0;font-size:17px;color:#C9D6EA;max-width:760px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:16px;font-size:15px;color:#C9D6EA}
+.meta b{color:#fff;font-weight:700}
+
+section{padding:34px 0 8px}
+h2{margin:0 0 4px;font-size:24px;font-weight:800;color:var(--navy)}
+.lead{margin:0 0 18px;color:var(--sub);font-size:16px;max-width:820px}
+
+/* chips */
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.chip{border:1.5px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;
+  padding:7px 15px;font:inherit;font-size:15px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700}
+
+/* hero chart */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:start}
+.chartbox{position:relative;height:340px;border:1px solid var(--line);border-radius:6px;padding:12px}
+.qlist{border-top:2px solid var(--navy)}
+.qlist .r{display:grid;grid-template-columns:118px 1fr;gap:4px 10px;padding:10px 4px;border-bottom:1px solid var(--line)}
+.qlist .q{font-weight:800;color:var(--navy)}
+.qlist .v{text-align:right;font-weight:800;font-size:18px}
+.qlist .s{grid-column:1/-1;font-size:14px;color:var(--sub);text-align:right}
+.qlist .partial .q::after{content:" 집계 중";font-size:12px;color:var(--orange);font-weight:700}
+
+/* table */
+.tbl-wrap{overflow-x:auto;border-top:2px solid var(--navy)}
+table{border-collapse:collapse;width:100%;min-width:900px}
+th,td{padding:11px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-size:14px;color:var(--sub);font-weight:700;background:var(--band);cursor:pointer;user-select:none}
+th:first-child,td:first-child,th.l,td.l{text-align:left}
+th[aria-sort="descending"]::after{content:" ▼";color:var(--orange)}
+th[aria-sort="ascending"]::after{content:" ▲";color:var(--orange)}
+tbody tr.row{cursor:pointer}
+tbody tr.row:hover{background:#FFF4EC}
+tbody tr.open{background:#FFF4EC}
+.tk{font-weight:800;font-size:18px;color:var(--ink)}
+.nm{display:block;font-size:13px;color:var(--sub);max-width:230px;overflow:hidden;text-overflow:ellipsis}
+.cat{font-size:14px;color:var(--sub)}
+.big{font-weight:800;font-size:18px}
+.up{color:var(--orange);font-weight:700}
+.dn{color:var(--navy);font-weight:700}
+.na{color:#A3ACBB}
+.old{display:inline-block;margin-left:6px;font-size:12px;color:var(--orange);border:1px solid var(--orange);border-radius:3px;padding:0 4px}
+/* coverage bar: the signature element */
+.cov{display:flex;align-items:center;gap:10px;justify-content:flex-end}
+.cov .bar{width:150px;height:14px;background:var(--band);position:relative}
+.cov .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--orange)}
+.cov .bar .tick{position:absolute;top:-3px;bottom:-3px;width:1px;background:#C7CDD6}
+.cov b{min-width:56px;text-align:right}
+tr.muted td{color:#A3ACBB}
+tr.detail td{background:#FFFBF7;padding:18px 16px;white-space:normal;text-align:left}
+.dgrid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px}
+.dchart{position:relative;height:280px}
+.pts{font-size:14px;width:100%;min-width:0}
+.pts td,.pts th{padding:6px 6px;font-size:14px;cursor:default;background:none}
+.legend{display:flex;gap:16px;font-size:14px;color:var(--sub);margin-bottom:6px}
+.legend span::before{content:"";display:inline-block;width:14px;height:4px;margin-right:6px;vertical-align:middle;background:var(--c)}
+
+/* notices */
+.notice{border-left:4px solid var(--orange);background:var(--band);padding:14px 18px;font-size:15px;color:var(--ink);margin:12px 0}
+.empty{padding:40px 20px;text-align:center;color:var(--sub);border:1px dashed var(--line)}
+.lbl{display:inline-block;font-size:12px;font-weight:700;border-radius:3px;padding:1px 6px;margin-left:4px;vertical-align:1px}
+.lbl.f{background:var(--navy-soft);color:var(--navy)}
+.lbl.e{background:var(--orange-soft);color:#A3460B}
+dl.def{display:grid;grid-template-columns:200px 1fr;gap:10px 18px;font-size:15px;margin:0}
+dl.def dt{font-weight:800;color:var(--navy)}
+dl.def dd{margin:0;color:var(--ink)}
+footer{margin-top:40px;padding:24px 0 40px;background:var(--band);font-size:14px;color:var(--sub)}
+
+@media (max-width:860px){
+  .hero,.dgrid{grid-template-columns:1fr}
+  header h1{font-size:26px}
+  dl.def{grid-template-columns:1fr}
+  .chartbox{height:280px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>AI 백로그 레이더</h1>
+    <p>미국 AI 밸류체인 기업이 앞으로 매출로 인식할 수주잔고 RPO(Remaining Performance Obligation, 잔여이행의무)를 SEC 공시 원수치로 추적합니다.</p>
+    <div class="meta">
+      <span>데이터 갱신 <b id="gen">—</b></span>
+      <span>출처 <b>SEC EDGAR XBRL</b> (미국 증권거래위원회 전자공시, 재무 태깅 데이터)</span>
+      <span>대상 <b id="cnt">—</b></span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <div class="empty" id="loading">데이터를 불러오는 중입니다.</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    수치는 각 기업이 SEC에 제출한 10-Q(분기보고서)·10-K(연차보고서)의 XBRL 원수치이며, 투자 권유가 아닙니다. 행을 누르면 원본 공시 링크로 수치를 직접 확인할 수 있습니다.
+  </div>
+</footer>
+
+<script>
+const CAT = {
+  hyperscaler:"하이퍼스케일러", neocloud:"네오클라우드·데이터센터", software:"AI 소프트웨어·데이터",
+  semis:"반도체·네트워크", power:"전력·냉각 인프라", servers:"서버·하드웨어"
+};
+const STATUS = {
+  no_rpo:"수주잔고(RPO) 태그 미공시", no_usgaap:"미국 회계기준 XBRL 없음 (해외 공시기업 등)", no_cik:"SEC 티커 목록에 없음"
+};
+const C = {orange:"#F37321", navy:"#0B2D5B", sub:"#5B6475", line:"#E3E6EB"};
+let DATA, aggChart, capChart, detailChart;
+let sortKey = "val", sortDir = -1, catFilter = "all", openTicker = null;
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* 금액: 억달러 / 조달러 */
+function usd(v){
+  if (v == null || isNaN(v)) return "—";
+  const neg = v < 0; let e = Math.abs(v) / 1e8;
+  let s;
+  if (e >= 10000){
+    const jo = Math.floor(e / 10000), rest = Math.round(e - jo * 10000);
+    s = rest ? `${jo}조 ${rest.toLocaleString("ko-KR")}억달러` : `${jo}조달러`;
+  } else if (e >= 100) s = `${Math.round(e).toLocaleString("ko-KR")}억달러`;
+  else s = `${e.toFixed(1)}억달러`;
+  return (neg ? "−" : "") + s;
+}
+function pct(v){
+  if (v == null || isNaN(v)) return '<span class="na">—</span>';
+  const t = (Math.abs(v) * 100).toFixed(1) + "%";
+  return v >= 0 ? `<span class="up">▲${t}</span>` : `<span class="dn">▼${t}</span>`;
+}
+const cqLabel = cq => cq ? `${cq.slice(2,4)}.${cq.slice(-1)}Q` : "";
+function edgar(cik, accn){
+  if (!cik || !accn) return null;
+  return `https://www.sec.gov/Archives/edgar/data/${cik}/${accn.replace(/-/g,"")}/${accn}-index.htm`;
+}
+function kst(iso){
+  const d = new Date(iso);
+  return d.toLocaleString("ko-KR",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}) + " (KST)";
+}
+
+fetch("data/backlog.json?v=" + Date.now())
+  .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+  .then(js => { DATA = js; render(); })
+  .catch(err => {
+    document.getElementById("loading").textContent = "데이터 파일(data/backlog.json)을 읽지 못했습니다: " + err.message;
+  });
+
+function render(){
+  const main = document.getElementById("main");
+  if (DATA.status !== "ok"){
+    main.innerHTML = `<div class="empty" style="margin-top:30px">아직 첫 데이터 수집이 실행되지 않았습니다.<br>
+      GitHub 저장소 → Actions → <b>Update backlog data</b> → <b>Run workflow</b>를 누르면 몇 분 뒤 표시됩니다.</div>`;
+    return;
+  }
+  document.getElementById("gen").textContent = kst(DATA.generated_at);
+  const withRpo = DATA.companies.filter(c => c.status === "ok" && c.rpo).length;
+  document.getElementById("cnt").textContent = `${DATA.companies.length}개 기업 중 수주잔고 공시 ${withRpo}개`;
+
+  main.innerHTML = `
+  <section id="s-agg">
+    <h2>수주잔고 합계 추이</h2>
+    <p class="lead">분기 말 기준 RPO 합계입니다. 회계연도가 다른 기업은 가장 가까운 달력 분기에 넣었습니다. 기업 수가 바뀌면 합계가 튀므로 <b>같은 기업끼리 비교한 전분기 대비</b>를 함께 봅니다.</p>
+    <div class="chips" id="aggChips" role="group" aria-label="분류 선택"></div>
+    <div class="hero">
+      <div class="chartbox"><canvas id="aggCanvas" aria-label="수주잔고 합계 분기 추이 차트"></canvas></div>
+      <div class="qlist" id="aggList"></div>
+    </div>
+  </section>
+
+  <section id="s-co">
+    <h2>기업별 수주잔고와 일감 배수</h2>
+    <p class="lead"><b>일감 배수</b> = 수주잔고 ÷ 최근 4개 분기 매출. 지금 쌓인 계약만으로 몇 년치 매출이 확보돼 있는지를 뜻합니다. 행을 누르면 분기 추이와 원본 공시가 열립니다.</p>
+    <div class="chips" id="coChips" role="group" aria-label="분류 필터"></div>
+    <div class="tbl-wrap"><table id="coTable">
+      <thead><tr>
+        <th data-k="ticker" class="l">종목</th>
+        <th data-k="category" class="l">분류</th>
+        <th data-k="val">수주잔고(최신) <span class="lbl f">확정</span></th>
+        <th data-k="end">기준일</th>
+        <th data-k="qoq">전분기 대비</th>
+        <th data-k="yoy">전년 대비</th>
+        <th data-k="cov">일감 배수 <span class="lbl e">추정</span></th>
+        <th data-k="filed">공시일</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section id="s-capex">
+    <h2>하이퍼스케일러 설비투자 CapEx(Capital Expenditure)</h2>
+    <p class="lead">수주잔고가 공급망 매출로 바뀌는 원천입니다. 현금흐름표의 유형자산 취득액(분기)입니다. 10-Q는 연초부터 누적치로 공시하므로 누적치 차감으로 분기값을 구했습니다.</p>
+    <div class="hero">
+      <div class="chartbox"><canvas id="capCanvas" aria-label="하이퍼스케일러 설비투자 분기 차트"></canvas></div>
+      <div class="qlist" id="capList"></div>
+    </div>
+    <div class="tbl-wrap" style="margin-top:18px"><table id="capTable" style="min-width:700px"></table></div>
+  </section>
+
+  <section id="s-scr">
+    <h2>전체 상장사 수주잔고 증가율 상위</h2>
+    <p class="lead" id="scrLead"></p>
+    <div class="chips" id="scrChips" role="group" aria-label="정렬"></div>
+    <div class="tbl-wrap"><table id="scrTable" style="min-width:760px"></table></div>
+  </section>
+
+  <section id="s-def">
+    <h2>데이터 읽는 법</h2>
+    <dl class="def">
+      <dt>수주잔고 RPO <span class="lbl f">확정</span></dt>
+      <dd>고객과 계약했지만 아직 매출로 인식하지 않은 금액. SEC XBRL 태그 RevenueRemainingPerformanceObligation의 공시 원수치이며, 정정 공시가 있으면 가장 최근 제출값을 씁니다.</dd>
+      <dt>분기 매출·CapEx <span class="lbl f">확정</span></dt>
+      <dd>3개월 공시치를 그대로 쓰고, 4분기처럼 3개월 수치가 없으면 연간(누적) − 직전 누적으로 차감해 구합니다. 차감값은 상세 화면에 ‘차감’으로 표시합니다.</dd>
+      <dt>일감 배수 <span class="lbl e">추정</span></dt>
+      <dd>RPO ÷ 최근 4분기 매출. 매출에 RPO 대상이 아닌 거래가 섞여 있어 업종 간 비교는 참고용입니다.</dd>
+      <dt>합계·달력 분기 <span class="lbl e">추정</span></dt>
+      <dd>결산월이 다른 기업(예: 5월 결산)을 가장 가까운 달력 분기에 배치해 더한 값입니다.</dd>
+      <dt>표시되지 않는 경우</dt>
+      <dd>RPO를 XBRL로 공시하지 않는 기업(일부 반도체·하드웨어), 해외 공시기업(20-F), 비상장사는 수치가 없습니다. 오래된 기준일에는 <span class="old">지연</span> 표시가 붙습니다(기준일 후 150일 초과).</dd>
+    </dl>
+    ${DATA.notes && DATA.notes.length ? `<div class="notice">수집 메모: ${DATA.notes.map(esc).join(" / ")}</div>` : ""}
+  </section>`;
+
+  renderAgg("all");
+  renderCompanies();
+  renderCapex();
+  renderScreener("yoy");
+}
+
+/* ---------- 1. 합계 ---------- */
+function renderAgg(cat){
+  const chips = document.getElementById("aggChips");
+  const ids = ["all", ...DATA.categories];
+  chips.innerHTML = ids.filter(id => (DATA.aggregate[id] || []).length).map(id =>
+    `<button class="chip" aria-pressed="${id===cat}" data-id="${id}">${id==="all"?"전체":CAT[id]||id}</button>`).join("");
+  chips.querySelectorAll(".chip").forEach(b => b.onclick = () => renderAgg(b.dataset.id));
+
+  const rows = DATA.aggregate[cat] || [];
+  const maxN = Math.max(0, ...rows.map(r => r.n));
+  const shown = rows.filter(r => r.n >= Math.ceil(maxN * 0.8));     // 기업 수가 크게 모자란 초기 분기 제외
+  const last = rows[rows.length - 1];
+  if (aggChart) aggChart.destroy();
+  aggChart = new Chart(document.getElementById("aggCanvas"), {
+    type:"line",
+    data:{ labels: shown.map(r => cqLabel(r.cq)),
+      datasets:[{ data: shown.map(r => r.sum / 1e8), borderColor:C.orange, backgroundColor:C.orange,
+        borderWidth:3, pointRadius:4, tension:.2,
+        segment:{ borderDash: ctx => (shown[ctx.p1DataIndex] && shown[ctx.p1DataIndex].n < maxN) ? [6,5] : undefined } }]},
+    options:{ maintainAspectRatio:false, plugins:{ legend:{display:false},
+      tooltip:{ callbacks:{ label: ctx => usd(shown[ctx.dataIndex].sum * 1),
+        afterLabel: ctx => { const r = shown[ctx.dataIndex]; return `집계 ${r.n}/${r.of}개 기업`; } } } },
+      scales:{ y:{ ticks:{ callback: v => v >= 10000 ? (v/10000).toFixed(1)+"조" : v.toLocaleString("ko-KR")+"억" }, grid:{color:C.line} },
+               x:{ grid:{display:false} } } }
+  });
+  document.getElementById("aggList").innerHTML = rows.slice(-5).reverse().map(r => `
+    <div class="r ${r.n < maxN ? "partial":""}">
+      <span class="q">${cqLabel(r.cq)}</span><span class="v">${usd(r.sum)}</span>
+      <span class="s">동일 ${r.same_base_n}개사 전분기 대비 ${pct(r.same_base_qoq)} · 집계 ${r.n}/${r.of}</span>
+    </div>`).join("") || '<div class="empty">해당 분류에 수주잔고 공시 기업이 없습니다.</div>';
+}
+
+/* ---------- 2. 기업별 ---------- */
+function coRows(){
+  return DATA.companies.map(c => ({
+    c, ticker:c.ticker, category:CAT[c.category]||c.category,
+    val:c.latest?.val ?? null, end:c.latest?.end ?? "", qoq:c.qoq ?? null, yoy:c.yoy ?? null,
+    cov:c.coverage_years ?? null, filed:c.latest?.filed ?? ""
+  }));
+}
+function renderCompanies(){
+  const chips = document.getElementById("coChips");
+  chips.innerHTML = ["all", ...DATA.categories].map(id =>
+    `<button class="chip" aria-pressed="${id===catFilter}" data-id="${id}">${id==="all"?"전체":CAT[id]||id}</button>`).join("");
+  chips.querySelectorAll(".chip").forEach(b => b.onclick = () => { catFilter = b.dataset.id; renderCompanies(); });
+
+  document.querySelectorAll("#coTable th").forEach(th => {
+    th.setAttribute("aria-sort", th.dataset.k === sortKey ? (sortDir < 0 ? "descending" : "ascending") : "none");
+    th.onclick = () => { if (sortKey === th.dataset.k) sortDir *= -1; else { sortKey = th.dataset.k; sortDir = -1; } renderCompanies(); };
+  });
+
+  let rows = coRows().filter(r => catFilter === "all" || r.c.category === catFilter);
+  const has = rows.filter(r => r.val != null), none = rows.filter(r => r.val == null);
+  has.sort((a,b) => {
+    const x = a[sortKey], y = b[sortKey];
+    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+    return (x > y ? 1 : x < y ? -1 : 0) * sortDir;
+  });
+  const maxCov = 6;   // 막대 눈금: 0~6년
+  const tb = document.querySelector("#coTable tbody");
+  tb.innerHTML = has.map(r => {
+    const c = r.c, stale = c.stale_days > 150;
+    const w = r.cov == null ? 0 : Math.min(r.cov, maxCov) / maxCov * 100;
+    const covCell = r.cov == null ? '<span class="na">—</span>' :
+      `<div class="cov"><div class="bar" title="${r.cov.toFixed(2)}년치">${[1,2,3,4,5].map(t=>`<span class="tick" style="left:${t/maxCov*100}%"></span>`).join("")}<i style="width:${w}%"></i></div><b>${r.cov.toFixed(1)}년</b></div>`;
+    return `<tr class="row ${openTicker===c.ticker?"open":""}" data-t="${esc(c.ticker)}" tabindex="0" aria-expanded="${openTicker===c.ticker}">
+      <td><span class="tk">${esc(c.ticker)}</span><span class="nm">${esc(c.name)}</span></td>
+      <td class="l cat">${esc(r.category)}</td>
+      <td class="big">${usd(r.val)}</td>
+      <td>${esc(r.end)} <span class="na">(${cqLabel(c.latest.cq)})</span>${stale?'<span class="old">지연</span>':""}</td>
+      <td>${pct(r.qoq)}</td><td>${pct(r.yoy)}</td>
+      <td>${covCell}</td>
+      <td>${esc(r.filed)}</td></tr>` + (openTicker===c.ticker ? `<tr class="detail"><td colspan="8">${detailHTML(c)}</td></tr>` : "");
+  }).join("") + none.map(r => `<tr class="muted"><td><span class="tk" style="color:#A3ACBB">${esc(r.c.ticker)}</span><span class="nm">${esc(r.c.name||"")}</span></td>
+      <td class="l cat">${esc(r.category)}</td><td colspan="6" class="l">${STATUS[r.c.status]||STATUS.no_rpo}</td></tr>`).join("");
+
+  tb.querySelectorAll("tr.row").forEach(tr => {
+    const toggle = () => { openTicker = openTicker === tr.dataset.t ? null : tr.dataset.t; renderCompanies(); };
+    tr.onclick = toggle;
+    tr.onkeydown = e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); toggle(); } };
+  });
+  if (openTicker) drawDetail(DATA.companies.find(c => c.ticker === openTicker));
+}
+
+function detailHTML(c){
+  const pts = (c.rpo || []).slice().reverse().slice(0, 8);
+  return `<div class="dgrid">
+    <div>
+      <div class="legend"><span style="--c:${C.orange}">수주잔고(RPO)</span><span style="--c:${C.navy}">분기 매출</span></div>
+      <div class="dchart"><canvas id="detailCanvas"></canvas></div>
+    </div>
+    <div>
+      <table class="pts"><thead><tr><th class="l">기준일</th><th>수주잔고</th><th>원본 공시</th></tr></thead><tbody>
+      ${pts.map(p => { const u = edgar(c.cik, p.accn);
+        return `<tr><td class="l">${esc(p.end)}</td><td>${usd(p.val)}</td><td>${u?`<a href="${u}" target="_blank" rel="noopener">${esc(p.form)}</a>`:"—"}</td></tr>`;}).join("")}
+      </tbody></table>
+      <p style="font-size:13px;color:var(--sub);margin:8px 0 0">최근 4분기 매출 ${usd(c.ttm_rev)} · 매출 태그 ${esc((c.rev_tags||[]).join(", ")||"없음")}</p>
+    </div></div>`;
+}
+function drawDetail(c){
+  if (detailChart) detailChart.destroy();
+  const el = document.getElementById("detailCanvas"); if (!el || !c) return;
+  const cqs = [...new Set([...(c.rpo||[]).map(p=>p.cq), ...(c.revenue_q||[]).map(p=>p.cq)])].sort().slice(-10);
+  const pick = (arr, cq) => { const m = (arr||[]).filter(p => p.cq === cq).pop(); return m ? m.val / 1e8 : null; };
+  const revHow = cq => { const m = (c.revenue_q||[]).filter(p => p.cq === cq).pop(); return m ? m.how : null; };
+  detailChart = new Chart(el, {
+    data:{ labels: cqs.map(cqLabel), datasets:[
+      { type:"line", label:"수주잔고", data: cqs.map(q => pick(c.rpo,q)), borderColor:C.orange, backgroundColor:C.orange, borderWidth:3, pointRadius:4, spanGaps:true, yAxisID:"y" },
+      { type:"bar", label:"분기 매출", data: cqs.map(q => pick(c.revenue_q,q)), backgroundColor:C.navy, yAxisID:"y2", maxBarThickness:28 }
+    ]},
+    options:{ maintainAspectRatio:false, plugins:{ legend:{display:false},
+      tooltip:{ callbacks:{ label: ctx => `${ctx.dataset.label} ${usd(ctx.raw*1e8)}${ctx.dataset.type==="bar" && revHow(cqs[ctx.dataIndex])==="derived" ? " (차감)" : ""}` } } },
+      scales:{ y:{ position:"left", ticks:{ callback:v=>v.toLocaleString("ko-KR")+"억", color:C.orange }, grid:{color:C.line} },
+               y2:{ position:"right", ticks:{ callback:v=>v.toLocaleString("ko-KR")+"억", color:C.navy }, grid:{display:false} },
+               x:{ grid:{display:false} } } }
+  });
+}
+
+/* ---------- 3. CapEx ---------- */
+function renderCapex(){
+  const rows = DATA.capex || [];
+  if (!rows.length){ document.getElementById("s-capex").insertAdjacentHTML("beforeend", '<div class="empty">설비투자 데이터가 없습니다.</div>'); return; }
+  const maxN = Math.max(...rows.map(r => r.n));
+  const shown = rows.filter(r => r.n === maxN);
+  if (capChart) capChart.destroy();
+  capChart = new Chart(document.getElementById("capCanvas"), {
+    type:"bar",
+    data:{ labels: shown.map(r => cqLabel(r.cq)), datasets:[{ data: shown.map(r => r.sum/1e8), backgroundColor:C.navy, maxBarThickness:44 }]},
+    options:{ maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: ctx => usd(shown[ctx.dataIndex].sum) } } },
+      scales:{ y:{ ticks:{ callback:v=>v.toLocaleString("ko-KR")+"억" }, grid:{color:C.line} }, x:{ grid:{display:false} } } }
+  });
+  document.getElementById("capList").innerHTML = rows.slice(-5).reverse().map((r,i,arr) => {
+    const prevYear = rows.find(x => x.cq === `${+r.cq.slice(0,4)-1}${r.cq.slice(4)}`);
+    const yoy = prevYear && prevYear.n === r.n ? (r.sum - prevYear.sum) / prevYear.sum : null;
+    return `<div class="r ${r.n < maxN ? "partial":""}"><span class="q">${cqLabel(r.cq)}</span><span class="v">${usd(r.sum)}</span>
+      <span class="s">전년 동기 대비 ${pct(yoy)} · 집계 ${r.n}/${r.of}</span></div>`;
+  }).join("");
+  const tickers = [...new Set(rows.flatMap(r => Object.keys(r.by)))];
+  const recent = rows.slice(-6);
+  document.getElementById("capTable").innerHTML =
+    `<thead><tr><th class="l" style="cursor:default">종목</th>${recent.map(r=>`<th style="cursor:default">${cqLabel(r.cq)}</th>`).join("")}</tr></thead><tbody>` +
+    tickers.map(t => `<tr><td><span class="tk">${esc(t)}</span></td>${recent.map(r => `<td>${r.by[t]!=null?usd(r.by[t]):'<span class="na">—</span>'}</td>`).join("")}</tr>`).join("") +
+    `<tr><td><b>합계</b></td>${recent.map(r=>`<td class="big">${usd(r.sum)}${r.n<maxN?' <span class="na">('+r.n+'/'+r.of+')</span>':""}</td>`).join("")}</tr></tbody>`;
+}
+
+/* ---------- 4. 스크리너 ---------- */
+function renderScreener(mode){
+  const s = DATA.screener || {};
+  const lead = document.getElementById("scrLead");
+  if (s.status !== "ok"){ lead.textContent = "스크리너 데이터가 없습니다."; return; }
+  const partial = (s.partial_newer||[]).length ? ` ${s.partial_newer.map(cqLabel).join(", ")}는 아직 공시가 덜 모여 제외했습니다.` : "";
+  lead.innerHTML = `SEC에 RPO를 공시한 전체 상장사 중 수주잔고 ${usd(s.min_usd)} 이상, <b>${cqLabel(s.quarter)}</b> 기준입니다.${partial} 레이더 대상 기업에는 ● 표시가 있습니다.`;
+  const chips = document.getElementById("scrChips");
+  chips.innerHTML = [["yoy","전년 대비 증가율순"],["qoq","전분기 대비 증가율순"],["val","금액순"]].map(([k,t]) =>
+    `<button class="chip" aria-pressed="${k===mode}" data-k="${k}">${t}</button>`).join("");
+  chips.querySelectorAll(".chip").forEach(b => b.onclick = () => renderScreener(b.dataset.k));
+  const rows = s.rows.slice().filter(r => mode === "val" || r[mode] != null)
+    .sort((a,b) => (b[mode] ?? -1e18) - (a[mode] ?? -1e18)).slice(0, 30);
+  document.getElementById("scrTable").innerHTML =
+    `<thead><tr><th class="l" style="cursor:default">순위</th><th class="l" style="cursor:default">종목</th><th style="cursor:default">수주잔고</th><th style="cursor:default">전분기 대비</th><th style="cursor:default">전년 대비</th><th style="cursor:default">원본 공시</th></tr></thead><tbody>` +
+    rows.map((r,i) => { const u = edgar(r.cik, r.accn);
+      return `<tr><td class="l">${i+1}</td>
+      <td class="l"><span class="tk">${r.in_universe?'<span style="color:var(--orange)">● </span>':""}${esc(r.ticker||"—")}</span><span class="nm">${esc(r.name)}</span></td>
+      <td class="big">${usd(r.val)}</td><td>${pct(r.qoq)}</td><td>${pct(r.yoy)}</td>
+      <td>${u?`<a href="${u}" target="_blank" rel="noopener">${esc(r.end)}</a>`:esc(r.end)}</td></tr>`; }).join("") + "</tbody>";
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "note": "Edit tickers here. Category ids map to Korean labels in index.html. US domestic filers (10-K/10-Q) only.",
+  "categories": [
+    {"id": "hyperscaler", "tickers": ["MSFT", "AMZN", "GOOGL", "META", "ORCL"]},
+    {"id": "neocloud",    "tickers": ["CRWV", "NBIS", "EQIX", "DLR", "APLD", "IREN"]},
+    {"id": "software",    "tickers": ["PLTR", "SNOW", "NOW", "CRM", "DDOG", "MDB", "NET"]},
+    {"id": "semis",       "tickers": ["NVDA", "AVGO", "AMD", "ANET", "MRVL", "MU", "CRDO", "COHR"]},
+    {"id": "power",       "tickers": ["GEV", "VRT", "ETN", "PWR", "BE"]},
+    {"id": "servers",     "tickers": ["DELL", "HPE", "SMCI"]}
+  ],
+  "capex_group": ["MSFT", "AMZN", "GOOGL", "META", "ORCL"],
+  "screener_min_usd": 1000000000
+}
