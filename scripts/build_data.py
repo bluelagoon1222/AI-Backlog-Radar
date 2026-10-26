@@ -39,6 +39,10 @@ CAPEX_TAGS = [
 ]
 FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A", "10-KT", "10-QT"}
 KEEP_POINTS = 12          # quarters kept per series in the output
+STALE_DAYS = 200          # latest RPO older than this -> tag discontinued
+YOY_BASE_MIN = 500_000_000  # screener growth needs a prior value >= $500M
+DIAG_KEYS = ("remainingperformanceobligation", "backlog", "unsatisfiedperformance",
+             "transactionpriceallocated", "contractedrevenue")
 REQ_GAP = 0.15            # seconds between requests (SEC limit: 10 req/s)
 
 UA = os.environ.get("SEC_USER_AGENT", "").strip()
@@ -99,11 +103,47 @@ def cq_shift(label, n):
 
 
 # ---------------------------------------------------------------- fact helpers
-def usd_facts(cf, tag):
+def usd_facts(cf, tag, taxonomy="us-gaap"):
     try:
-        return cf["facts"]["us-gaap"][tag]["units"]["USD"]
+        return cf["facts"][taxonomy][tag]["units"]["USD"]
     except (KeyError, TypeError):
         return []
+
+
+def period_ends(cf, tags):
+    """All fiscal period end dates seen in duration facts (balance-sheet dates)."""
+    ends = set()
+    for tag in tags:
+        for f in usd_facts(cf, tag):
+            if f.get("start") and f.get("form") in FORMS:
+                ends.add(f["end"])
+    return ends
+
+
+def on_period_end(series, ends):
+    """Drop instants that are not period ends (e.g. subsequent-event dates)."""
+    if not ends:
+        return series
+    ok = [d(e) for e in ends]
+    return [p for p in series if any(abs((d(p["end"]) - e).days) <= 3 for e in ok)]
+
+
+def diagnose(cf):
+    """Candidate backlog-like tags in any taxonomy, for manual override later."""
+    out = []
+    for tax, tags in (cf.get("facts") or {}).items():
+        for tag, body in tags.items():
+            if not any(k in tag.lower() for k in DIAG_KEYS):
+                continue
+            facts = (body.get("units") or {}).get("USD") or []
+            facts = [f for f in facts if f.get("form") in FORMS]
+            if not facts:
+                continue
+            last = max(facts, key=lambda f: (f["end"], f.get("filed", "")))
+            out.append({"tag": f"{tax}:{tag}", "n": len(facts), "last_end": last["end"],
+                        "last_val": last["val"], "instant": not last.get("start")})
+    out.sort(key=lambda x: x["last_end"], reverse=True)
+    return out[:10]
 
 
 def dedupe(facts):
@@ -253,12 +293,24 @@ def build():
                 notes.append(f"{tk}: no us-gaap XBRL facts (foreign filer or new listing)")
                 continue
 
-            rpo = instant_series(usd_facts(cf, RPO_TAG))
+            override = (cfg.get("rpo_overrides") or {}).get(tk)
+            if override and ":" in override:
+                tax, tag = override.split(":", 1)
+            else:
+                tax, tag = "us-gaap", RPO_TAG
+            item["rpo_tag"] = f"{tax}:{tag}"
+            rpo = instant_series(usd_facts(cf, tag, tax))
+            rpo = on_period_end(rpo, period_ends(cf, REV_TAGS))
             rev_q, rev_tags = merged_quarterly(cf, REV_TAGS)
             item["rev_tags"] = rev_tags
 
+            if rpo and (today - d(rpo[-1]["end"])).days > STALE_DAYS:
+                item["status"] = "stale"
+                item["last_rpo"] = slim(rpo[-1])
             if not rpo:
                 item["status"] = "no_rpo"
+            if item["status"] != "ok":
+                item["diag"] = diagnose(cf)
             else:
                 last = rpo[-1]
                 asof = d(last["end"])
@@ -314,7 +366,7 @@ def by_cq(series):
 
 
 def build_aggregate(companies, cfg):
-    groups = {"all": [c for c in companies if c.get("rpo")]}
+    groups = {"all": [c for c in companies if c.get("rpo") and c["status"] == "ok"]}
     for cat in cfg["categories"]:
         groups[cat["id"]] = [c for c in groups["all"] if c["category"] == cat["id"]]
     result = {}
@@ -384,11 +436,14 @@ def build_screener(cfg, c2t, universe_tickers, today):
         if r["val"] < min_usd:
             continue
         tk = c2t.get(cik)
+        base_q = q1[cik]["val"] if cik in q1 else None
+        base_y = y1[cik]["val"] if cik in y1 else None
         rows.append({
             "cik": cik, "ticker": tk, "name": r.get("entityName"),
             "end": r["end"], "val": r["val"], "accn": r.get("accn"),
-            "qoq": pct(r["val"], q1[cik]["val"]) if cik in q1 else None,
-            "yoy": pct(r["val"], y1[cik]["val"]) if cik in y1 else None,
+            "qoq": pct(r["val"], base_q) if base_q and base_q >= YOY_BASE_MIN else None,
+            "yoy": pct(r["val"], base_y) if base_y and base_y >= YOY_BASE_MIN else None,
+            "new": base_y is None or base_y < YOY_BASE_MIN,
             "in_universe": tk in universe_tickers if tk else False,
         })
     rows.sort(key=lambda x: (x["yoy"] is None, -(x["yoy"] or 0)))
@@ -398,6 +453,7 @@ def build_screener(cfg, c2t, universe_tickers, today):
         "counts": {cq: len(frames[cq]) for cq in order},
         "partial_newer": [cq for cq in order if cq > pick],
         "min_usd": min_usd,
+        "yoy_base_min": YOY_BASE_MIN,
         "rows": rows,
     }
 

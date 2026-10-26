@@ -181,7 +181,7 @@ function render(){
     return;
   }
   document.getElementById("gen").textContent = kst(DATA.generated_at);
-  const withRpo = DATA.companies.filter(c => c.status === "ok" && c.rpo).length;
+  const withRpo = DATA.companies.filter(c => c.status === "ok").length;
   document.getElementById("cnt").textContent = `${DATA.companies.length}개 기업 중 수주잔고 공시 ${withRpo}개`;
 
   main.innerHTML = `
@@ -243,7 +243,7 @@ function render(){
       <dt>합계·달력 분기 <span class="lbl e">추정</span></dt>
       <dd>결산월이 다른 기업(예: 5월 결산)을 가장 가까운 달력 분기에 배치해 더한 값입니다.</dd>
       <dt>표시되지 않는 경우</dt>
-      <dd>RPO를 XBRL로 공시하지 않는 기업(일부 반도체·하드웨어), 해외 공시기업(20-F), 비상장사는 수치가 없습니다. 오래된 기준일에는 <span class="old">지연</span> 표시가 붙습니다(기준일 후 150일 초과).</dd>
+      <dd>RPO를 XBRL로 공시하지 않는 기업(일부 반도체·하드웨어), 최근 200일 넘게 RPO 태그가 없는 기업(공시 중단), 해외 공시기업(20-F), 비상장사는 합계에서 빠집니다. 오래된 기준일에는 <span class="old">지연</span> 표시가 붙습니다(기준일 후 150일 초과).</dd>
     </dl>
     ${DATA.notes && DATA.notes.length ? `<div class="notice">수집 메모: ${DATA.notes.map(esc).join(" / ")}</div>` : ""}
   </section>`;
@@ -264,7 +264,9 @@ function renderAgg(cat){
 
   const rows = DATA.aggregate[cat] || [];
   const maxN = Math.max(0, ...rows.map(r => r.n));
-  const shown = rows.filter(r => r.n >= Math.ceil(maxN * 0.8));     // 기업 수가 크게 모자란 초기 분기 제외
+  const lastFull = rows.map(r => r.n).lastIndexOf(maxN);
+  const isPartial = r => rows.indexOf(r) > lastFull;                 // 최신 분기 중 공시가 덜 모인 분기
+  const shown = rows.filter(r => r.n >= Math.ceil(maxN * 0.8));     // 기업 수가 크게 모자란 분기 제외
   const last = rows[rows.length - 1];
   if (aggChart) aggChart.destroy();
   aggChart = new Chart(document.getElementById("aggCanvas"), {
@@ -272,7 +274,7 @@ function renderAgg(cat){
     data:{ labels: shown.map(r => cqLabel(r.cq)),
       datasets:[{ data: shown.map(r => r.sum / 1e8), borderColor:C.orange, backgroundColor:C.orange,
         borderWidth:3, pointRadius:4, tension:.2,
-        segment:{ borderDash: ctx => (shown[ctx.p1DataIndex] && shown[ctx.p1DataIndex].n < maxN) ? [6,5] : undefined } }]},
+        segment:{ borderDash: ctx => (shown[ctx.p1DataIndex] && isPartial(shown[ctx.p1DataIndex])) ? [6,5] : undefined } }]},
     options:{ maintainAspectRatio:false, plugins:{ legend:{display:false},
       tooltip:{ callbacks:{ label: ctx => usd(shown[ctx.dataIndex].sum * 1),
         afterLabel: ctx => { const r = shown[ctx.dataIndex]; return `집계 ${r.n}/${r.of}개 기업`; } } } },
@@ -280,7 +282,7 @@ function renderAgg(cat){
                x:{ grid:{display:false} } } }
   });
   document.getElementById("aggList").innerHTML = rows.slice(-5).reverse().map(r => `
-    <div class="r ${r.n < maxN ? "partial":""}">
+    <div class="r ${isPartial(r) ? "partial":""}">
       <span class="q">${cqLabel(r.cq)}</span><span class="v">${usd(r.sum)}</span>
       <span class="s">동일 ${r.same_base_n}개사 전분기 대비 ${pct(r.same_base_qoq)} · 집계 ${r.n}/${r.of}</span>
     </div>`).join("") || '<div class="empty">해당 분류에 수주잔고 공시 기업이 없습니다.</div>';
@@ -291,7 +293,8 @@ function coRows(){
   return DATA.companies.map(c => ({
     c, ticker:c.ticker, category:CAT[c.category]||c.category,
     val:c.latest?.val ?? null, end:c.latest?.end ?? "", qoq:c.qoq ?? null, yoy:c.yoy ?? null,
-    cov:c.coverage_years ?? null, filed:c.latest?.filed ?? ""
+    cov:c.coverage_years ?? null, filed:c.latest?.filed ?? "",
+    val0:c.status === "ok" ? (c.latest?.val ?? null) : null
   }));
 }
 function renderCompanies(){
@@ -306,7 +309,7 @@ function renderCompanies(){
   });
 
   let rows = coRows().filter(r => catFilter === "all" || r.c.category === catFilter);
-  const has = rows.filter(r => r.val != null), none = rows.filter(r => r.val == null);
+  const has = rows.filter(r => r.val0 != null), none = rows.filter(r => r.val0 == null);
   has.sort((a,b) => {
     const x = a[sortKey], y = b[sortKey];
     if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
@@ -318,6 +321,7 @@ function renderCompanies(){
     const c = r.c, stale = c.stale_days > 150;
     const w = r.cov == null ? 0 : Math.min(r.cov, maxCov) / maxCov * 100;
     const covCell = r.cov == null ? '<span class="na">—</span>' :
+      r.cov < 0.1 ? `<span class="na" title="RPO가 매출 대비 매우 작아 일감 지표로 의미가 낮음">매출 대비 미미 (${r.cov.toFixed(2)}년)</span>` :
       `<div class="cov"><div class="bar" title="${r.cov.toFixed(2)}년치">${[1,2,3,4,5].map(t=>`<span class="tick" style="left:${t/maxCov*100}%"></span>`).join("")}<i style="width:${w}%"></i></div><b>${r.cov.toFixed(1)}년</b></div>`;
     return `<tr class="row ${openTicker===c.ticker?"open":""}" data-t="${esc(c.ticker)}" tabindex="0" aria-expanded="${openTicker===c.ticker}">
       <td><span class="tk">${esc(c.ticker)}</span><span class="nm">${esc(c.name)}</span></td>
@@ -328,7 +332,9 @@ function renderCompanies(){
       <td>${covCell}</td>
       <td>${esc(r.filed)}</td></tr>` + (openTicker===c.ticker ? `<tr class="detail"><td colspan="8">${detailHTML(c)}</td></tr>` : "");
   }).join("") + none.map(r => `<tr class="muted"><td><span class="tk" style="color:#A3ACBB">${esc(r.c.ticker)}</span><span class="nm">${esc(r.c.name||"")}</span></td>
-      <td class="l cat">${esc(r.category)}</td><td colspan="6" class="l">${STATUS[r.c.status]||STATUS.no_rpo}</td></tr>`).join("");
+      <td class="l cat">${esc(r.category)}</td><td colspan="6" class="l">${r.c.status==="stale" && r.c.last_rpo
+        ? `RPO 태그 공시 중단 (마지막 기준일 ${esc(r.c.last_rpo.end)}, ${usd(r.c.last_rpo.val)})`
+        : (STATUS[r.c.status]||STATUS.no_rpo)}</td></tr>`).join("");
 
   tb.querySelectorAll("tr.row").forEach(tr => {
     const toggle = () => { openTicker = openTicker === tr.dataset.t ? null : tr.dataset.t; renderCompanies(); };
@@ -388,7 +394,7 @@ function renderCapex(){
   document.getElementById("capList").innerHTML = rows.slice(-5).reverse().map((r,i,arr) => {
     const prevYear = rows.find(x => x.cq === `${+r.cq.slice(0,4)-1}${r.cq.slice(4)}`);
     const yoy = prevYear && prevYear.n === r.n ? (r.sum - prevYear.sum) / prevYear.sum : null;
-    return `<div class="r ${r.n < maxN ? "partial":""}"><span class="q">${cqLabel(r.cq)}</span><span class="v">${usd(r.sum)}</span>
+    return `<div class="r ${rows.indexOf(r) > rows.map(x => x.n).lastIndexOf(maxN) ? "partial":""}"><span class="q">${cqLabel(r.cq)}</span><span class="v">${usd(r.sum)}</span>
       <span class="s">전년 동기 대비 ${pct(yoy)} · 집계 ${r.n}/${r.of}</span></div>`;
   }).join("");
   const tickers = [...new Set(rows.flatMap(r => Object.keys(r.by)))];
@@ -405,7 +411,7 @@ function renderScreener(mode){
   const lead = document.getElementById("scrLead");
   if (s.status !== "ok"){ lead.textContent = "스크리너 데이터가 없습니다."; return; }
   const partial = (s.partial_newer||[]).length ? ` ${s.partial_newer.map(cqLabel).join(", ")}는 아직 공시가 덜 모여 제외했습니다.` : "";
-  lead.innerHTML = `SEC에 RPO를 공시한 전체 상장사 중 수주잔고 ${usd(s.min_usd)} 이상, <b>${cqLabel(s.quarter)}</b> 기준입니다.${partial} 레이더 대상 기업에는 ● 표시가 있습니다.`;
+  lead.innerHTML = `SEC에 RPO를 공시한 전체 상장사 중 수주잔고 ${usd(s.min_usd)} 이상, <b>${cqLabel(s.quarter)}</b> 기준입니다.${partial} 레이더 대상 기업에는 ● 표시가 있습니다. 1년 전 잔고가 ${usd(s.yoy_base_min||5e8)} 미만이면 증가율 대신 ‘신규’로 표시합니다.`;
   const chips = document.getElementById("scrChips");
   chips.innerHTML = [["yoy","전년 대비 증가율순"],["qoq","전분기 대비 증가율순"],["val","금액순"]].map(([k,t]) =>
     `<button class="chip" aria-pressed="${k===mode}" data-k="${k}">${t}</button>`).join("");
@@ -417,7 +423,7 @@ function renderScreener(mode){
     rows.map((r,i) => { const u = edgar(r.cik, r.accn);
       return `<tr><td class="l">${i+1}</td>
       <td class="l"><span class="tk">${r.in_universe?'<span style="color:var(--orange)">● </span>':""}${esc(r.ticker||"—")}</span><span class="nm">${esc(r.name)}</span></td>
-      <td class="big">${usd(r.val)}</td><td>${pct(r.qoq)}</td><td>${pct(r.yoy)}</td>
+      <td class="big">${usd(r.val)}</td><td>${pct(r.qoq)}</td><td>${r.yoy==null && r.new ? '<span class="na">신규</span>' : pct(r.yoy)}</td>
       <td>${u?`<a href="${u}" target="_blank" rel="noopener">${esc(r.end)}</a>`:esc(r.end)}</td></tr>`; }).join("") + "</tbody>";
 }
 </script>
